@@ -1,11 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(gazebo_useful_plugins)
 
-find_package(catkin REQUIRED COMPONENTS std_msgs std_srvs) 
-
-catkin_package()
-
-
+find_package(catkin REQUIRED COMPONENTS  roscpp std_msgs std_srvs message_generation) 
 # Find Gazebo
 find_package(gazebo REQUIRED)
 include_directories(${GAZEBO_INCLUDE_DIRS})
@@ -22,6 +18,17 @@ include_directories(
     ${GAZEBO_INCLUDE_DIRS}
     ${catkin_INCLUDE_DIRS}
 )
+
+add_service_files(DIRECTORY srv FILES LinkRequested.srv)
+
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
+
+
+catkin_package()
 
 # Build our plugin
 add_library(centauro_plugin SHARED src/centauro_plugin.cpp)

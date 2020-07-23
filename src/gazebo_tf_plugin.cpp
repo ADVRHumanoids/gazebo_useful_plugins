@@ -16,9 +16,11 @@
 
 #include <xbot_msgs/JointState.h>
 
+#include "gazebo_useful_plugins/LinkRequested.h"
+
 using namespace std;
 
-static bool send_fix_world=true;
+static string link_requested;
 
 namespace gazebo
 {
@@ -39,16 +41,9 @@ namespace gazebo
         // Store the model pointer for convenience.
         this->model = _model;
         
+        link_requested="";
+        this->tf_prefix="gazebo/"; 
         
-        std::string joint_name;
-        
-        for(int i=0;i <_model->GetJointCount();i++)
-        {
-        this->joint = _model->GetJoints()[i];
-        joint_name=this->joint->GetScopedName();
-        cout << joint_name << endl;
-        }
-    
         // Initialize ros, if it has not already bee initialized.
         if (!ros::isInitialized())
         {
@@ -57,45 +52,91 @@ namespace gazebo
         ros::init(argc, argv, "gazebo_tfix_pub",
         ros::init_options::NoSigintHandler);
         }
+        
 
         // Create our ROS node. This acts in a similar manner to
         // the Gazebo node
         this->rosNode.reset(new ros::NodeHandle("gazebo_tfix_pub"));
 
+        this->service = this->rosNode->advertiseService("pub_tf_link", pub_tf_link);
 
-        // subscribe /xbotcore/joint_states.
-
-        this->service = this->rosNode->advertiseService("pub_fix_world", pub_fix_world);
-        
         this->updateConnection = event::Events::ConnectWorldUpdateBegin(boost::bind(&GazeboTFPlugin::TF_BroadCast, this,_1));
         
     }
     
      public: void TF_BroadCast(const common::UpdateInfo& _info){
-
-        if(send_fix_world)
-        {
+       
             static tf::TransformBroadcaster br;
-            tf::Transform transform;
-            gazebo::math::Pose pose=model->GetWorldPose();
-            transform.setOrigin( tf::Vector3(pose.pos.x,pose.pos.y,pose.pos.z) );
-            tf::Quaternion q;
-            q.setW(pose.rot.w);
-            q.setX(pose.rot.x);
-            q.setY(pose.rot.y);
-            q.setZ(pose.rot.z);
-            //q.setRPY(0, 0, 0);
-            transform.setRotation(q);
-            br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "fixed_world", "world"));
-        }
+            tf::Transform transform_actual,trasform_parent;
+            ignition::math::Pose3d pose,pose_parent;
+            tf::Quaternion q;     
+            if(link_requested!="")
+            {
+                string past_link_requested=link_requested;
+                for(int i=0;i <model->GetJointCount();i++)
+                {
+                    if(past_link_requested!=link_requested)
+                        return;
+                    actual_link  = model->GetLinks()[i];
+                    actual_link_name=actual_link->GetName();
+                    actual_tf_name=tf_prefix+actual_link_name;
+
+                    if((actual_link_name==link_requested) || (link_requested=="all"))
+                    {
+                        pose= actual_link->WorldPose();
+                        transform_actual.setOrigin( tf::Vector3(pose.Pos().X(),pose.Pos().Y(),pose.Pos().Z()) );
+                    
+                        q.setW(pose.Rot().W());
+                        q.setX(pose.Rot().X());
+                        q.setY(pose.Rot().Y());
+                        q.setZ(pose.Rot().Z());
+        
+                        transform_actual.setRotation(q);
+                            
+                        parent_link=actual_link->GetParentJointsLinks();
+                        
+                        if(parent_link.size()==0)
+                                br.sendTransform(tf::StampedTransform(transform_actual, ros::Time::now(),"gazebo/world",actual_tf_name));
+                        else
+                        {
+                            for (int i=0; i < parent_link.size(); i++) 
+                            {
+                                pose_parent=parent_link[i]->WorldPose();
+                                parent_link_name=parent_link[i]->GetName();
+                                parent_tf_name=tf_prefix+parent_link_name;
+
+                                trasform_parent.setOrigin( tf::Vector3(pose_parent.Pos().X(),pose_parent.Pos().Y(),pose_parent.Pos().Z()) );
+                            
+                                q.setW(pose_parent.Rot().W());
+                                q.setX(pose_parent.Rot().X());
+                                q.setY(pose_parent.Rot().Y());
+                                q.setZ(pose_parent.Rot().Z());
+
+                                trasform_parent.setRotation(q);
+                                
+                                transform_actual=trasform_parent.inverse()*transform_actual;
+
+                                br.sendTransform(tf::StampedTransform(transform_actual, ros::Time::now(),parent_tf_name,actual_tf_name));
+                            }
+                        }
+                    }
+                    else
+                        return;
+                }
+            }
+
     }
-    public: static bool pub_fix_world(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res){
-    
-        send_fix_world=true;
+    public: static bool pub_tf_link(gazebo_useful_plugins::LinkRequested::Request  &req, gazebo_useful_plugins::LinkRequested::Response& res) {
+
+        link_requested=req.link_name;
         return true;
     }
     
     private: 
+        
+    string actual_link_name,parent_link_name,actual_tf_name,parent_tf_name;
+    string tf_prefix;
+        
     /// \brief Pointer to the model.
     physics::ModelPtr model;
     
@@ -103,11 +144,15 @@ namespace gazebo
 
     /// \brief Pointer to the joint.
     physics::JointPtr joint;
+    
+    /// \brief Pointer to the joint.
+    physics::LinkPtr actual_link;
+    physics::Link_V  child_link;
+    physics::Link_V  parent_link;
 
     /// \brief A node use for ROS transport
     unique_ptr<ros::NodeHandle> rosNode;
 
-        
     /// \brief A ROS subscriber
     ros::ServiceServer service;
     
@@ -117,3 +162,4 @@ namespace gazebo
   GZ_REGISTER_MODEL_PLUGIN(GazeboTFPlugin)
 }
 #endif
+
