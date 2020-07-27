@@ -19,9 +19,6 @@ include_directories(
     ${catkin_INCLUDE_DIRS}
 )
 
-add_service_files(DIRECTORY srv FILES LinkRequested.srv)
-
-
 generate_messages(
   DEPENDENCIES
   std_msgs
@@ -34,10 +31,6 @@ catkin_package()
 add_library(centauro_plugin SHARED src/centauro_plugin.cpp)
 target_link_libraries(centauro_plugin ${GAZEBO_LIBRARIES} ${catkin_LIBRARIES})
 
-
-# Build our plugin
-add_library(gazebo_tf_plugin SHARED src/gazebo_tf_plugin.cpp)
-target_link_libraries(gazebo_tf_plugin ${GAZEBO_LIBRARIES} ${catkin_LIBRARIES})
 
 # Declare the C++ plugin library.
 add_library(gazebo_tf_injector SHARED src/gazebo_tf_injector.cpp)
